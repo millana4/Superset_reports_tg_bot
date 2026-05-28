@@ -18,9 +18,30 @@ logger = logging.getLogger(__name__)
 
 async def handle_email(email_msg):
     """
-    Извлекает из письма тему и вложения (только PDF и PNG файлы).
-    Редактирует тему письма, чтобы она была информативной для читателей.
+    Извлекает из письма тему и вложения (только изображения и PDF: jpg, jpeg, png, pdf).
+    Текстовые части письма игнорируются. Тема редактируется для информативности.
     """
+    # Допустимые форматы: по расширению имени файла и по content-type
+    allowed_extensions = ('.pdf', '.png', '.jpg', '.jpeg')
+
+    def detect_extension(fname: str | None, content_type: str) -> str | None:
+        """Определяет допустимое расширение по имени файла, затем по content-type."""
+        # 1) по имени файла
+        if fname:
+            low = fname.lower()
+            for ext in allowed_extensions:
+                if low.endswith(ext):
+                    return ext
+        # 2) по content-type
+        ct = (content_type or '').lower()
+        if 'pdf' in ct:
+            return '.pdf'
+        if 'png' in ct:
+            return '.png'
+        if 'jpeg' in ct or 'jpg' in ct:
+            return '.jpg'
+        return None
+
     try:
         # Получаем и парсим дату из письма (с конвертацией в московское время)
         date_str = email_msg['Date']
@@ -30,7 +51,7 @@ async def handle_email(email_msg):
         moscow_tz = timezone(timedelta(hours=3))
         moscow_date = parsed_date.astimezone(moscow_tz)
 
-        # Форматируем дату с двоеточием между часами и минутами
+        # Форматируем дату
         formatted_date = moscow_date.strftime('%d.%m.%Y %H:%M')
 
         # Декодируем тему письма
@@ -46,7 +67,8 @@ async def handle_email(email_msg):
         # Обрабатываем тему: удаляем [Superset] и добавляем дату
         subject = subject.replace('[Superset]', '').strip()
         subject = f"{subject} {formatted_date}" if subject else formatted_date
-        logger.info(f"Обработанная тема письма: {subject}")
+        logger.info("Тема письма обработана")
+        logger.debug(f"Тема: {subject}")
 
         attachments = []
 
@@ -56,88 +78,77 @@ async def handle_email(email_msg):
             if part.get_content_maintype() == 'multipart':
                 continue
 
+            # Явно игнорируем текстовые части письма (тело, html)
+            if part.get_content_maintype() == 'text':
+                continue
+
             content_disposition = str(part.get("Content-Disposition", "")).lower()
             filename = part.get_filename()
 
-            # Если есть имя файла или явно указано, что это вложение
-            if filename or 'attachment' in content_disposition:
-                try:
-                    payload = part.get_payload(decode=True)
-                    if not payload:
-                        continue
+            # Берём только то, что выглядит как вложение
+            if not (filename or 'attachment' in content_disposition):
+                continue
 
-                    # Декодируем имя файла с учетом разных кодировок
-                    if filename:
-                        # Декодируем заголовок filename (может быть в формате =?encoding?...?=)
-                        decoded_filename = []
-                        for part_filename, encoding in decode_header(filename):
-                            if isinstance(part_filename, bytes):
+            try:
+                payload = part.get_payload(decode=True)
+                if not payload:
+                    continue
+
+                # Декодируем имя файла с учётом разных кодировок
+                if filename:
+                    decoded_filename = []
+                    for part_filename, encoding in decode_header(filename):
+                        if isinstance(part_filename, bytes):
+                            try:
                                 try:
-                                    # Пробуем UTF-8 сначала, затем KOI8-R если UTF-8 не сработает
-                                    try:
-                                        decoded_part = part_filename.decode('utf-8')
-                                    except UnicodeDecodeError:
-                                        decoded_part = part_filename.decode('koi8-r')
-                                    decoded_filename.append(decoded_part)
-                                except Exception as e:
-                                    logger.warning(f"Ошибка декодирования имени файла: {e}")
-                                    decoded_filename.append(part_filename.decode('latin-1'))
-                            else:
-                                decoded_filename.append(str(part_filename))
-                        filename = ''.join(decoded_filename)
-
-                        logger.info(f'Декодированное имя файла: {filename}')
-
-                        # Определяем расширение файла
-                        file_extension = None
-
-                        # Вариант 1: Из имени файла
-                        if filename:
-                            filename_lower = filename.lower()
-                            logger.info(f'Имя файла {filename_lower}')
-                            if filename_lower.endswith('.pdf'):
-                                file_extension = '.pdf'
-                            elif filename_lower.endswith('.png'):
-                                file_extension = '.png'
-
-                        # Вариант 2: Из content-type (добавлено для PNG)
-                        if not file_extension:
-                            content_type = part.get_content_type().lower()
-                            if 'pdf' in content_type:
-                                file_extension = '.pdf'
-                            elif 'png' in content_type:
-                                file_extension = '.png'
-
-                        # Пропускаем если не PDF и не PNG
-                        if not file_extension:
-                            logger.warning(f"Пропущено вложение недопустимого типа: {filename}")
-                            continue
-
-                        # Создаем имя файла если его нет
-                        if not filename:
-                            filename = f"attachment_{formatted_date.replace(':', '_')}{file_extension}"
+                                    decoded_part = part_filename.decode('utf-8')
+                                except UnicodeDecodeError:
+                                    decoded_part = part_filename.decode('koi8-r')
+                                decoded_filename.append(decoded_part)
+                            except Exception as e:
+                                logger.warning(f"Ошибка декодирования имени файла: {e}")
+                                decoded_filename.append(part_filename.decode('latin-1'))
                         else:
-                            # Для PDF добавляем дату
-                            if file_extension == '.pdf':
-                                base_name = os.path.splitext(filename)[0]
-                                filename = f"{base_name} {formatted_date}{file_extension}"
-                            # Для PNG добавляем расширение, если его нет
-                            elif file_extension == '.png' and not filename.lower().endswith('.png'):
-                                filename = f"{filename}.png"
+                            decoded_filename.append(str(part_filename))
+                    filename = ''.join(decoded_filename)
+                    logger.debug(f"Декодированное имя файла: {filename}")
 
-                        logger.info(f"Найдено вложение: {filename} ({len(payload)} bytes)")
-                        attachments.append((filename, payload))
+                # Определяем допустимое расширение (по имени, затем по content-type)
+                file_extension = detect_extension(filename, part.get_content_type())
 
-                except Exception as e:
-                    logger.error(f"Ошибка обработки вложения {filename}: {e}")
+                # Пропускаем всё, что не входит в допустимые форматы
+                if not file_extension:
+                    logger.debug(f"Пропущено вложение недопустимого типа: {filename}")
+                    continue
 
-        logger.info(f"Итого найдено PDF/PNG вложений: {len(attachments)}")
+                # Формируем имя файла
+                if not filename:
+                    # Имени нет (например, inline-картинка) — создаём своё
+                    filename = f"attachment_{formatted_date.replace(':', '_')}{file_extension}"
+                else:
+                    if file_extension == '.pdf':
+                        # Для PDF добавляем дату к имени
+                        base_name = os.path.splitext(filename)[0]
+                        filename = f"{base_name} {formatted_date}{file_extension}"
+                    else:
+                        # Для картинок гарантируем корректное расширение
+                        if not filename.lower().endswith(allowed_extensions):
+                            filename = f"{filename}{file_extension}"
+
+                logger.info("Найдено вложение допустимого типа")
+                logger.debug(f"Вложение: {filename} ({len(payload)} bytes)")
+                attachments.append((filename, payload))
+
+            except Exception as e:
+                logger.error(f"Ошибка обработки вложения: {e}")
+                logger.debug(f"Ошибка обработки вложения {filename}: {e}")
+
+        logger.info(f"Итого найдено вложений: {len(attachments)}")
         return subject, attachments
 
     except Exception as e:
         logger.error(f"Критическая ошибка в handle_email: {e}", exc_info=True)
         raise
-
 
 async def distribute_attachments(email: str, subject: str, attachments: list[tuple[str, bytes]]):
     """Рассылает вложения пользователям и чатам, подписанным на указанный email."""

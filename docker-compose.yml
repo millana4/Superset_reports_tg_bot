@@ -1,0 +1,11 @@
+services:
+  bot:
+    build: .
+    container_name: superset-tg-bot
+    restart: unless-stopped        # автоперезапуск при падении и после рестарта сервера
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Moscow
+    volumes:
+      - ./logs:/app/logs           # логи переживают пересоздание контейнера
