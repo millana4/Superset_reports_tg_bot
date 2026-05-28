@@ -173,7 +173,8 @@ async def distribute_attachments(email: str, subject: str, attachments: list[tup
 async def resend_report(message, account_email: str, loop: asyncio.AbstractEventLoop):
     """Запускает пересылку PDF-вложения и запускает обновление last_uid (последнего обработанного письма)"""
     try:
-        print(f"[{account_email}] Обработка письма UID={message.uid}, тема: {message.subject}")
+        logger.info("Обработка нового письма")
+        logger.debug(f"[{account_email}] UID={message.uid}, тема: {message.subject}")
 
         # Обработка письма и извлечение данных
         subject, attachments = await handle_email(message.obj)
@@ -185,11 +186,12 @@ async def resend_report(message, account_email: str, loop: asyncio.AbstractEvent
             # Обновляем last_uid, если вложения были успешно отправлены
             await update_last_uid(account_email, str(message.uid))
         else:
-            print(f"[{account_email}] Вложений нет, рассылка не требуется.")
+            logger.info("Вложений нет, рассылка не требуется")
+            logger.debug(f"[{account_email}] UID={message.uid}: вложений нет")
 
     except Exception as e:
-        print(f"[{account_email}] Ошибка обработки письма UID={message.uid}: {e}")
-
+        logger.error(f"Ошибка обработки письма: {e}", exc_info=True)
+        logger.debug(f"[{account_email}] Ошибка обработки UID={message.uid}: {e}")
 
 def imap_idle_listener(account, loop):
     """Слушает входящие письма на одном почтовом аккаунте через IMAP IDLE."""
@@ -197,10 +199,11 @@ def imap_idle_listener(account, loop):
         try:
             with MailBox(account["imap"]).login(account["email"], account["password"]) as mailbox:
                 mailbox.folder.set('INBOX')
-                print(f"[{account['email']}] Подключен, выбрана папка INBOX. Ожидание писем...")
+                logger.info("IMAP подключён, выбрана папка INBOX")
+                logger.debug(f"[{account['email']}] Подключён, ожидание писем...")
 
                 while True:
-                    print(f"[{account['email']}] Вошли в режим IDLE")
+                    logger.debug(f"[{account['email']}] Режим IDLE")
                     for _ in mailbox.idle.wait(timeout=300):  # Ждём новые письма до 5 минут
                         break
 
@@ -208,7 +211,7 @@ def imap_idle_listener(account, loop):
                     messages = list(mailbox.fetch(AND(seen=False)))
 
                     if not messages:
-                        print(f"[{account['email']}] Нет непрочитанных писем. Ожидание новых.")
+                        logger.debug(f"[{account['email']}] Нет непрочитанных писем")
                         continue
 
                     # Получаем последний обработанный UID
@@ -222,7 +225,8 @@ def imap_idle_listener(account, loop):
                     if last_uid is None:
                         # Обрабатываем только самое свежее письмо
                         latest_message = max(messages, key=lambda m: int(m.uid))
-                        print(f"[{account['email']}] Первая инициализация. Обрабатываем письмо UID={latest_message.uid}")
+                        logger.info("Первая инициализация ящика")
+                        logger.debug(f"[{account['email']}] Обрабатываем UID={latest_message.uid}")
 
                         asyncio.run_coroutine_threadsafe(
                             resend_report(latest_message, account['email'], loop),
@@ -237,11 +241,11 @@ def imap_idle_listener(account, loop):
                     # Фильтруем только новые письма
                     unseen_messages = [m for m in messages if int(m.uid) > last_uid]
                     if any(int(m.uid) < last_uid for m in messages):
-                        print(
-                            f"[{account['email']}] ERROR: Обнаружены письма с UID меньше последнего обработанного ({last_uid}). Они будут проигнорированы.")
+                        logger.warning("Обнаружены письма с UID меньше последнего обработанного — игнорируются")
+                        logger.debug(f"[{account['email']}] last_uid={last_uid}")
 
                     if not unseen_messages:
-                        print(f"[{account['email']}] Новых непрочитанных писем нет.")
+                        logger.debug(f"[{account['email']}] Новых писем нет")
                         continue
 
                     # Сортируем по UID (на всякий случай)
@@ -255,5 +259,6 @@ def imap_idle_listener(account, loop):
                         )
 
         except Exception as e:
-            print(f"[{account['email']}] Ошибка подключения или работы с IMAP: {e}")
+            logger.error(f"Ошибка подключения или работы с IMAP: {e}")
+            logger.debug(f"[{account['email']}] IMAP error: {e}")
             time.sleep(10)
