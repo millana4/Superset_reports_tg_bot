@@ -4,12 +4,13 @@ import asyncio
 import logging
 import email.utils
 
-from bot import bot
-from seatable_api import get_last_uid, update_last_uid, get_users_to_send, get_chats_to_send
 from aiogram.types import BufferedInputFile
 from imap_tools import MailBox, AND
 from email.header import decode_header
 from datetime import timezone, timedelta
+
+from bot import bot
+from db import get_last_uid, update_last_uid, get_subscribers_for_email
 
 
 logger = logging.getLogger(__name__)
@@ -138,20 +139,16 @@ async def handle_email(email_msg):
         raise
 
 
-
-async def distribute_attachments(email: str, subject: str, attachments: list[tuple[str, bytes]],
-                                 loop: asyncio.AbstractEventLoop):
-    """Рассылает вложения пользователям, подписанным на указанный email"""
+async def distribute_attachments(email: str, subject: str, attachments: list[tuple[str, bytes]]):
+    """Рассылает вложения пользователям и чатам, подписанным на указанный email."""
     try:
-        # Получаем список telegram_id пользователей
-        telegram_users_ids = await get_users_to_send(email)
-        # Получаем список telegram_id групп
-        telegram_chats_ids = await get_chats_to_send(email)
-
+        # За один запрос получаем и пользователей, и чаты
+        telegram_users_ids, telegram_chats_ids = await get_subscribers_for_email(email)
         telegram_ids = telegram_users_ids + telegram_chats_ids
 
         if not telegram_ids:
-            logger.error(f"[{email}] Нет подписчиков или групп для рассылки")
+            logger.warning("Нет подписчиков или групп для рассылки")
+            logger.debug(f"distribute_attachments: нет получателей для {email}")
             return
 
         # Рассылаем вложения
@@ -163,12 +160,14 @@ async def distribute_attachments(email: str, subject: str, attachments: list[tup
                         document=BufferedInputFile(content, filename=filename),
                         caption=subject if subject else None
                     )
-                    logger.info(f"[{email}] Отправлено пользователю {telegram_id}: {filename}")
+                    logger.info("Вложение отправлено получателю")
+                    logger.debug(f"[{email}] Отправлено {telegram_id}: {filename}")
                 except Exception as e:
-                    logger.error(f"[{email}] Ошибка отправки пользователю {telegram_id}: {e}")
+                    logger.error(f"Ошибка отправки получателю: {e}")
+                    logger.debug(f"[{email}] Ошибка отправки {telegram_id}: {e}")
 
     except Exception as e:
-        logger.error(f"[{email}] Критическая ошибка рассылки: {str(e)}", exc_info=True)
+        logger.error(f"Критическая ошибка рассылки: {e}", exc_info=True)
 
 
 async def resend_report(message, account_email: str, loop: asyncio.AbstractEventLoop):
@@ -181,7 +180,7 @@ async def resend_report(message, account_email: str, loop: asyncio.AbstractEvent
 
         # Пересылка пользователям из БД
         if attachments:
-            await distribute_attachments(account_email, subject, attachments, loop)
+            await distribute_attachments(account_email, subject, attachments)
 
             # Обновляем last_uid, если вложения были успешно отправлены
             await update_last_uid(account_email, str(message.uid))

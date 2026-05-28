@@ -5,7 +5,7 @@ import logging
 
 from utils import normalize_phone
 from keyboards import share_contact_kb
-from seatable_api import check_id_telegram, register_id_telegram
+from db import check_id_telegram, register_id_telegram
 
 
 logger = logging.getLogger(__name__)

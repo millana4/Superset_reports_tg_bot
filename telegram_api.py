@@ -2,7 +2,7 @@ from aiogram import Router
 from aiogram.types import ChatMemberUpdated
 import logging
 
-from seatable_api import register_group
+from db import register_group
 
 router = Router()
 logger = logging.getLogger(__name__)
