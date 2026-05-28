@@ -574,31 +574,3 @@ async def update_last_uid(email: str, uid: str) -> bool:
         logger.error(f"Ошибка при обновлении last_uid: {str(e)}", exc_info=True)
         return False
 
-
-# Отладочный скрипт для вывода ответов json по API SeaTable
-# if __name__ == "__main__":
-#     async def main():
-#         print("Базовый токен")
-#         token_data = await get_base_token()
-#         print(token_data)
-#
-#         print("Таблица пользователей, шапка:")
-#         user_table = await get_table_columns(Config.SEATABLE_USERS_TABLE_ID)
-#         print(user_table)
-#
-#         print("Проверка get для last_uid")
-#         last_uid = await get_last_uid("example@domain.com")
-#         if last_uid:
-#             print(f"Последний UID: {last_uid}")
-#         else:
-#             print("UID не найден или произошла ошибка")
-#
-#         print("Проверка update для last_uid")
-#         success = await update_last_uid("example@domain.com", "12345")
-#         if success:
-#             print("UID успешно обновлен")
-#         else:
-#             print("Ошибка обновления UID")
-#
-#     asyncio.run(
-#         main())
