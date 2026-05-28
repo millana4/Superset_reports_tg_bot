@@ -190,7 +190,7 @@ async def register_id_telegram(phone: str, id_telegram: int | str) -> bool:
 
 async def register_group(chat_id: int, chat_title: str) -> bool:
     """
-    Ищет группу по названию и записывает id_telegram_chat, затем блокирует её
+    Ищет группу по названию и записывает id_telegram_chat, затем блокирует от перезаписи
     (is_locked=True), чтобы вторая группа с тем же названием не перехватила рассылку.
     Уже заблокированную группу не трогаем.
     """
@@ -198,11 +198,14 @@ async def register_group(chat_id: int, chat_title: str) -> bool:
     logger.debug(f"register_group: title={chat_title}, chat_id={chat_id}")
     try:
         async with NocoDBClient() as client:
-            # Названия групп неуникальны — берём все совпадения по имени
-            candidates = await client.get_all(
-                table_id=Config.NOCODB_CHATS_TABLE_ID,
-                where=f"(Name,eq,{chat_title})",
-            )
+            # Тянем все группы и сравниваем имя
+            all_chats = await client.get_all(table_id=Config.NOCODB_CHATS_TABLE_ID)
+
+            # Точное совпадение по названию (имена групп неуникальны)
+            candidates = [
+                c for c in all_chats
+                if str(c.get("Name", "")).strip() == chat_title.strip()
+            ]
 
             if not candidates:
                 logger.warning("Группа с таким названием не найдена в таблице")

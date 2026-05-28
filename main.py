@@ -47,7 +47,7 @@ async def main():
             args=(account, loop),
             daemon=True,
         ).start()
-        logger.info("IMAP-листенер запущен для ящика")
+        logger.info(f"IMAP-листенер запущен для ящика {account["email"]}")
 
     # Запускаем Telegram-бота
     try:

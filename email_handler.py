@@ -185,7 +185,7 @@ async def resend_report(message, account_email: str, loop: asyncio.AbstractEvent
     """Запускает пересылку PDF-вложения и запускает обновление last_uid (последнего обработанного письма)"""
     try:
         logger.info("Обработка нового письма")
-        logger.debug(f"[{account_email}] UID={message.uid}, тема: {message.subject}")
+        logger.info(f"[{account_email}] UID={message.uid}, тема: {message.subject}")
 
         # Обработка письма и извлечение данных
         subject, attachments = await handle_email(message.obj)

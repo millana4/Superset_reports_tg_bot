@@ -20,7 +20,7 @@ async def cmd_start(message: types.Message):
 
     # Проверяем, есть ли пользователь с таким id_telegram
     already_member = await check_id_telegram(id_telegram)
-    logger.info(f"Пользователь %s есть в таблице Seatable — {already_member}", id_telegram)
+    logger.info(f"Пользователь %s есть в таблице — {already_member}", id_telegram)
 
     if already_member:
         await message.answer("👋 Приветствуем! Вы подписаны на уведомления от Superset.")
