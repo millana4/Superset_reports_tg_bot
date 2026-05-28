@@ -6,6 +6,7 @@ import logging
 from utils import normalize_phone
 from keyboards import share_contact_kb
 from db import check_id_telegram, register_id_telegram
+from custom_logging import mask_phone
 
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,8 @@ async def handle_contact(message: types.Message):
     id_telegram = message.from_user.id
 
     normalized_phone = normalize_phone(contact.phone_number)
-    logger.info("Пользователь прислал номер: %s (нормализован: %s)", contact.phone_number, normalized_phone)
+    logger.debug("Пользователь прислал номер: %s (нормализован: %s)",
+                 mask_phone(contact.phone_number), mask_phone(normalized_phone))
 
     # Добавляем id_telegram пользователя в таблицу Seatable
     success = await register_id_telegram(normalized_phone, id_telegram)

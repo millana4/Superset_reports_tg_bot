@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 from config import Config
 from nocodb_client import NocoDBClient
 from utils import normalize_phone
+from custom_logging import mask_phone, mask_name
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ async def register_id_telegram(phone: str, id_telegram: int | str) -> bool:
     normalized_input = normalize_phone(phone)
     if not normalized_input:
         logger.warning("Не удалось нормализовать входящий телефон")
-        logger.debug(f"register_id_telegram: входящий телефон не нормализуется: {phone}")
+        logger.debug(f"register_id_telegram: телефон не нормализуется: {mask_phone(phone)}")
         return False
 
     try:
@@ -161,7 +162,7 @@ async def register_id_telegram(phone: str, id_telegram: int | str) -> bool:
 
             if not matched:
                 logger.warning("Пользователь с указанным телефоном не найден")
-                logger.debug(f"register_id_telegram: телефон не найден: {normalized_input}")
+                logger.debug(f"register_id_telegram: телефон не найден: {mask_phone(normalized_input)}")
                 return False
 
             # Готовим обновление: всегда пишем id_telegram;
@@ -177,7 +178,7 @@ async def register_id_telegram(phone: str, id_telegram: int | str) -> bool:
             )
 
         logger.info("id_telegram успешно записан пользователю")
-        logger.debug(f"register_id_telegram: записан id_telegram={id_telegram} для {normalized_input}")
+        logger.debug(f"register_id_telegram: id_telegram записан для {mask_phone(normalized_input)}")
         return True
 
     except Exception as e:
